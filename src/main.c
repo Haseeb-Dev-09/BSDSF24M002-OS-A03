@@ -1,10 +1,12 @@
 #include "shell.h"
+#include <readline/readline.h>
+#include <readline/history.h>
 
 int main() {
     char* cmdline;
     char** arglist;
 
-    while ((cmdline = read_cmd(PROMPT, stdin)) != NULL) {
+    while ((cmdline = readline(PROMPT)) != NULL) { 
         // "!n" is replaced by the n-th history entry BEFORE tokenizing
         if (cmdline[0] == '!') {
             char* expanded = psh_hist_expand(cmdline);
@@ -17,6 +19,7 @@ int main() {
 
         if ((arglist = tokenize(cmdline)) != NULL) {
             psh_hist_add(cmdline);       // only non-empty commands are stored
+            add_history(cmdline);  
 
             if (handle_builtin(arglist) == 0)
                 execute(arglist);
