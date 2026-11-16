@@ -40,6 +40,12 @@ int handle_builtin(char** arglist) {
         printf("  exit       exit the shell\n");
         printf("  help       show this help message\n");
         printf("  jobs       list background jobs (not yet implemented)\n");
+        printf("  history    show previously entered commands\n");
+        return 1;
+    }
+    
+    if (strcmp(arglist[0], "history") == 0) {
+        psh_hist_print();
         return 1;
     }
 
