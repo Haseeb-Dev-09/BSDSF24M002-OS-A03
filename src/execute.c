@@ -1,6 +1,128 @@
 #include "shell.h"
+#include <fcntl.h>
+
+/*
+ * apply_redirections: called in the CHILD, after fork() and before execvp().
+ * Finds "<" and ">" in arglist, redirects stdin/stdout to the named file,
+ * and removes the operator and file name from arglist so that execvp()
+ * only sees the real command and its arguments.
+ */
+static void apply_redirections(char** arglist) {
+    for (int i = 0; arglist[i] != NULL; ) {
+        int is_in  = (strcmp(arglist[i], "<") == 0);
+        int is_out = (strcmp(arglist[i], ">") == 0);
+
+        if (!is_in && !is_out) {
+            i++;
+            continue;
+        }
+        if (arglist[i + 1] == NULL) {
+            fprintf(stderr, "syntax error: expected a file name after '%s'\n", arglist[i]);
+            exit(1);
+        }
+
+        int fd;
+        if (is_in)
+            fd = open(arglist[i + 1], O_RDONLY);
+        else
+            fd = open(arglist[i + 1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0) {
+            perror(arglist[i + 1]);
+            exit(1);
+        }
+
+        dup2(fd, is_in ? STDIN_FILENO : STDOUT_FILENO);
+        close(fd);                    // the duplicate is enough
+
+        // remove the two words (operator + file name): shift the rest left
+        // by 2, stopping after the NULL terminator has been copied
+        int j = i;
+        do {
+            arglist[j] = arglist[j + 2];
+            j++;
+        } while (arglist[j - 1] != NULL);
+        // do not advance i: a new word now sits at position i
+    }
+}
+
+// Returns the index of the first "|" in arglist, or -1 if there is none.
+static int find_pipe(char** arglist) {
+    for (int i = 0; arglist[i] != NULL; i++)
+        if (strcmp(arglist[i], "|") == 0)
+            return i;
+    return -1;
+}
+
+/*
+ * execute_pipe: runs "left | right". pos is the index of "|" in arglist.
+ * The shell creates ONE pipe and forks TWO children:
+ *   left child  (writer): its stdout -> write end of the pipe
+ *   right child (reader): its stdin  <- read end of the pipe
+ */
+static int execute_pipe(char** arglist, int pos) {
+    char** right = arglist + pos + 1;
+
+    if (pos == 0 || right[0] == NULL) {
+        fprintf(stderr, "syntax error near '|'\n");
+        return -1;
+    }
+    if (find_pipe(right) >= 0) {
+        fprintf(stderr, "only one pipe per command is supported\n");
+        return -1;
+    }
+
+    int fd[2];                       // fd[0] = read end, fd[1] = write end
+    if (pipe(fd) < 0) {
+        perror("pipe");
+        return -1;
+    }
+
+    pid_t left_pid = fork();
+    if (left_pid < 0) {
+        perror("fork failed");
+        close(fd[0]); close(fd[1]);
+        return -1;
+    }
+    if (left_pid == 0) {             // ---- left child (writer) ----
+        arglist[pos] = NULL;         // cut the line at '|' (child's copy only)
+        dup2(fd[1], STDOUT_FILENO);
+        close(fd[0]);                // close BOTH original ends
+        close(fd[1]);
+        apply_redirections(arglist);
+        execvp(arglist[0], arglist);
+        perror("Command not found");
+        exit(1);
+    }
+
+    pid_t right_pid = fork();
+    if (right_pid < 0) {
+        perror("fork failed");
+        close(fd[0]); close(fd[1]);
+        waitpid(left_pid, NULL, 0);
+        return -1;
+    }
+    if (right_pid == 0) {            // ---- right child (reader) ----
+        dup2(fd[0], STDIN_FILENO);
+        close(fd[0]);
+        close(fd[1]);
+        apply_redirections(right);
+        execvp(right[0], right);
+        perror("Command not found");
+        exit(1);
+    }
+
+    // ---- parent: close its copies of the pipe, then wait for both ----
+    close(fd[0]);
+    close(fd[1]);
+    waitpid(left_pid, NULL, 0);
+    waitpid(right_pid, NULL, 0);
+    return 0;
+}
 
 int execute(char* arglist[]) {
+    int pos = find_pipe(arglist);
+    if (pos >= 0)
+        return execute_pipe(arglist, pos);
     int status;
     int cpid = fork();
 
@@ -9,6 +131,7 @@ int execute(char* arglist[]) {
             perror("fork failed");
             exit(1);
         case 0: // Child process
+            apply_redirections(arglist);
             execvp(arglist[0], arglist);
             perror("Command not found"); // This line runs only if execvp fails
             exit(1);
