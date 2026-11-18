@@ -68,20 +68,20 @@ static int execute_pipe(char** arglist, int pos) {
     }
     if (find_pipe(right) >= 0) {
         fprintf(stderr, "only one pipe per command is supported\n");
-        return -1;
+        return 1;
     }
 
     int fd[2];                       // fd[0] = read end, fd[1] = write end
     if (pipe(fd) < 0) {
         perror("pipe");
-        return -1;
+        return 1;
     }
 
     pid_t left_pid = fork();
     if (left_pid < 0) {
         perror("fork failed");
         close(fd[0]); close(fd[1]);
-        return -1;
+        return 1;
     }
     if (left_pid == 0) {             // ---- left child (writer) ----
         arglist[pos] = NULL;         // cut the line at '|' (child's copy only)
@@ -114,9 +114,11 @@ static int execute_pipe(char** arglist, int pos) {
     // ---- parent: close its copies of the pipe, then wait for both ----
     close(fd[0]);
     close(fd[1]);
+    int right_status;
     waitpid(left_pid, NULL, 0);
-    waitpid(right_pid, NULL, 0);
-    return 0;
+    waitpid(right_pid, &right_status, 0);
+    // like bash: the status of a pipeline is the status of its LAST command
+    return WIFEXITED(right_status) ? WEXITSTATUS(right_status) : 1;
 }
 
 int execute(char* arglist[], int background) {
@@ -124,7 +126,7 @@ int execute(char* arglist[], int background) {
     if (pos >= 0) {
         if (background) {
             fprintf(stderr, "background pipelines are not supported\n");
-            return -1;
+            return 1;
         }
         return execute_pipe(arglist, pos);
     }
@@ -148,8 +150,8 @@ int execute(char* arglist[], int background) {
                 return 0;
             }
             waitpid(cpid, &status, 0);
-            // printf("Child pid:%d exited with status %d\n", cpid, status >> 8);
-            return 0;
+            // exit code of the child: 0 = success, non-zero = failure
+            return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
     }
 }
 

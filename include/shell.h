@@ -10,7 +10,7 @@
 #include <errno.h>
 
 #define MAX_LEN 512
-#define MAXARGS 10
+#define MAXARGS 30
 #define ARGLEN 128
 #define PROMPT "FCIT> "
 #define HISTORY_SIZE 50   

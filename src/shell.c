@@ -32,27 +32,43 @@ char** tokenize(char* cmdline) {
     }
 
     char* cp = cmdline;
-    char* start;
-    int len;
     int argnum = 0;
 
     while (*cp != '\0' && argnum < MAXARGS) {
         while (*cp == ' ' || *cp == '\t') cp++; // Skip leading whitespace
-        
+
         if (*cp == '\0') break; // Line was only whitespace
 
-        start = cp;
-        len = 1;
+        char* word = arglist[argnum];
+        int len = 0;
+
         if (*cp == '<' || *cp == '>' || *cp == '|' || *cp == '&') {
-            cp++;                    // an operator is always a token by itself
+            word[len++] = *cp++;             // an operator is always a token by itself
         } else {
-              while (*++cp != '\0' && !(*cp == ' ' || *cp == '\t' ||
-                                *cp == '<' || *cp == '>' || *cp == '|' || *cp == '&')) {
-                  len++;
-              }
+            char quote = '\0';               // 0 = not inside quotes
+            while (*cp != '\0') {
+                if (quote != '\0') {
+                    if (*cp == quote) {      // closing quote: drop it
+                        quote = '\0';
+                        cp++;
+                        continue;
+                    }
+                } else {
+                    if (*cp == '"' || *cp == '\'') {   // opening quote: drop it
+                        quote = *cp;
+                        cp++;
+                        continue;
+                    }
+                    if (*cp == ' ' || *cp == '\t' || *cp == '<' ||
+                        *cp == '>' || *cp == '|' || *cp == '&')
+                        break;               // end of this word
+                }
+                if (len < ARGLEN - 1)        // never overflow the buffer
+                    word[len++] = *cp;
+                cp++;
+            }
         }
-        strncpy(arglist[argnum], start, len);
-        arglist[argnum][len] = '\0';
+        word[len] = '\0';
         argnum++;
     }
 
