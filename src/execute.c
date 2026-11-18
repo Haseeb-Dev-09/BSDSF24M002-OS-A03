@@ -4,7 +4,7 @@
 /*
  * apply_redirections: called in the CHILD, after fork() and before execvp().
  * Finds "<" and ">" in arglist, redirects stdin/stdout to the named file,
- * and removes the operator and file name from arglist so that execvp()
+ * and removes the operator and filename from arglist so that execvp()
  * only sees the real command and its arguments.
  */
 static void apply_redirections(char** arglist) {
@@ -32,10 +32,10 @@ static void apply_redirections(char** arglist) {
         }
 
         dup2(fd, is_in ? STDIN_FILENO : STDOUT_FILENO);
-        close(fd);                    // the duplicate is enough
+        close(fd);                       // the duplicate is enough
 
-        // remove the two words (operator + file name): shift the rest left
-        // by 2, stopping after the NULL terminator has been copied
+        // remove the two words (operator + file name): shift the rest left by 2,
+        // stopping after the NULL terminator has been copied
         int j = i;
         do {
             arglist[j] = arglist[j + 2];
@@ -56,8 +56,8 @@ static int find_pipe(char** arglist) {
 /*
  * execute_pipe: runs "left | right". pos is the index of "|" in arglist.
  * The shell creates ONE pipe and forks TWO children:
- *   left child  (writer): its stdout -> write end of the pipe
- *   right child (reader): its stdin  <- read end of the pipe
+ *   left child  (writer): its stdout  -> write end of the pipe
+ *   right child (reader): its stdin   <- read end of the pipe
  */
 static int execute_pipe(char** arglist, int pos) {
     char** right = arglist + pos + 1;
@@ -86,8 +86,8 @@ static int execute_pipe(char** arglist, int pos) {
     if (left_pid == 0) {             // ---- left child (writer) ----
         arglist[pos] = NULL;         // cut the line at '|' (child's copy only)
         dup2(fd[1], STDOUT_FILENO);
-        close(fd[0]);                // close BOTH original ends
-        close(fd[1]);
+        close(fd[0]);                // close BOTH original ends: the child
+        close(fd[1]);                // must not keep the pipe open
         apply_redirections(arglist);
         execvp(arglist[0], arglist);
         perror("Command not found");
@@ -119,10 +119,16 @@ static int execute_pipe(char** arglist, int pos) {
     return 0;
 }
 
-int execute(char* arglist[]) {
+int execute(char* arglist[], int background) {
     int pos = find_pipe(arglist);
-    if (pos >= 0)
+    if (pos >= 0) {
+        if (background) {
+            fprintf(stderr, "background pipelines are not supported\n");
+            return -1;
+        }
         return execute_pipe(arglist, pos);
+    }
+
     int status;
     int cpid = fork();
 
@@ -136,12 +142,22 @@ int execute(char* arglist[]) {
             perror("Command not found"); // This line runs only if execvp fails
             exit(1);
         default: // Parent process
+            if (background) {            // do NOT wait: go straight back to the prompt
+                add_job(cpid, arglist);
+                printf("[started in background, pid %d]\n", cpid);
+                return 0;
+            }
             waitpid(cpid, &status, 0);
             // printf("Child pid:%d exited with status %d\n", cpid, status >> 8);
             return 0;
     }
 }
 
+/*
+ * handle_builtin: runs commands that must execute inside the shell process
+ * itself (a child process cannot change the parent's directory or exit it).
+ * Returns 1 if arglist[0] was a built-in (already handled), 0 otherwise.
+ */
 int handle_builtin(char** arglist) {
     if (strcmp(arglist[0], "exit") == 0) {
         printf("Shell exited.\n");
@@ -150,32 +166,34 @@ int handle_builtin(char** arglist) {
 
     if (strcmp(arglist[0], "cd") == 0) {
         const char* dir = arglist[1];
-        if (dir == NULL)                 // "cd" alone goes to HOME
+        if (dir == NULL)              // "cd" alone goes to HOME
             dir = getenv("HOME");
         if (dir == NULL || chdir(dir) != 0)
             fprintf(stderr, "cd: %s: %s\n", dir ? dir : "(no HOME)", strerror(errno));
         return 1;
     }
-    
+
     if (strcmp(arglist[0], "help") == 0) {
         printf("Built-in commands:\n");
         printf("  cd <dir>   change the current directory\n");
         printf("  exit       exit the shell\n");
         printf("  help       show this help message\n");
-        printf("  jobs       list background jobs (not yet implemented)\n");
         printf("  history    show previously entered commands\n");
+        printf("  !n         re-run command number n from history\n");
+        printf("  jobs       list running background jobs\n");
         return 1;
     }
-    
+
     if (strcmp(arglist[0], "history") == 0) {
         psh_hist_print();
         return 1;
     }
 
     if (strcmp(arglist[0], "jobs") == 0) {
-        printf("Job control not yet implemented.\n");
+        print_jobs();
         return 1;
     }
 
     return 0;   // not a built-in
 }
+

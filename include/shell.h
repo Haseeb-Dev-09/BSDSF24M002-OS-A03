@@ -18,10 +18,13 @@
 // Function prototypes
 char* read_cmd(char* prompt, FILE* fp);
 char** tokenize(char* cmdline);
-int execute(char** arglist);
+int execute(char** arglist, int background);
 int handle_builtin(char** arglist);
 void psh_hist_add(const char* cmdline);
 void psh_hist_print(void);
 char* psh_hist_expand(const char* cmdline);
+void add_job(pid_t pid, char** arglist);
+void reap_jobs(void);
+void print_jobs(void);
 
 #endif // SHELL_H

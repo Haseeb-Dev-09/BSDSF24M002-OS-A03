@@ -43,13 +43,13 @@ char** tokenize(char* cmdline) {
 
         start = cp;
         len = 1;
-        if (*cp == '<' || *cp == '>' || *cp == '|') {
+        if (*cp == '<' || *cp == '>' || *cp == '|' || *cp == '&') {
             cp++;                    // an operator is always a token by itself
         } else {
               while (*++cp != '\0' && !(*cp == ' ' || *cp == '\t' ||
-                              *cp == '<' || *cp == '>' || *cp == '|')) {
-                len++;
-          }
+                                *cp == '<' || *cp == '>' || *cp == '|' || *cp == '&')) {
+                  len++;
+              }
         }
         strncpy(arglist[argnum], start, len);
         arglist[argnum][len] = '\0';
