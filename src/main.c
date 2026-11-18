@@ -40,8 +40,10 @@ static int run_command(char* segment) {
     if (!valid) {
         fprintf(stderr, "syntax error: '&' must come at the end of a command\n");
         status = 1;
-    } else if (handle_builtin(arglist) == 0) {
-        status = execute(arglist, background);
+    } else {
+        expand_variables(arglist);           // replace $NAME by its value
+        if (arglist[0] != NULL && handle_builtin(arglist) == 0)
+            status = execute(arglist, background);
     }
 
     // Free the memory allocated by tokenize()

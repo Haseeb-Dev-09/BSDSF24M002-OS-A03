@@ -161,6 +161,16 @@ int execute(char* arglist[], int background) {
  * Returns 1 if arglist[0] was a built-in (already handled), 0 otherwise.
  */
 int handle_builtin(char** arglist) {
+
+    // NAME=value is an assignment, not a program: store it in the shell
+    if (is_assignment(arglist[0])) {
+        if (arglist[1] != NULL)
+            fprintf(stderr, "%s: put the value in quotes if it contains spaces\n", arglist[0]);
+        else
+            var_assign(arglist[0]);
+        return 1;
+    }
+
     if (strcmp(arglist[0], "exit") == 0) {
         printf("Shell exited.\n");
         exit(0);
@@ -188,6 +198,11 @@ int handle_builtin(char** arglist) {
 
     if (strcmp(arglist[0], "history") == 0) {
         psh_hist_print();
+        return 1;
+    }
+    
+    if (strcmp(arglist[0], "set") == 0) {
+        var_print_all();
         return 1;
     }
 

@@ -26,5 +26,10 @@ char* psh_hist_expand(const char* cmdline);
 void add_job(pid_t pid, char** arglist);
 void reap_jobs(void);
 void print_jobs(void);
+const char* var_get(const char* name);
+int   is_assignment(const char* word);
+void  var_assign(char* word);
+void  var_print_all(void);
+void  expand_variables(char** arglist);
 
 #endif // SHELL_H
